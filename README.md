@@ -96,8 +96,10 @@ pytest
 4. Deploy. The key lives only in Streamlit's secret storage. It is never in
    the code or in the browser.
 
-Optional: set `GEMINI_MODEL` in secrets to use a specific Gemini model
-(default: `gemini-flash-latest`).
+Optional: set `GEMINI_MODEL` in secrets to a comma-separated list of Gemini models.
+By default the app tries `gemini-flash-latest`, `gemini-3.5-flash`, `gemini-flash-lite-latest`
+and `gemini-3.1-flash-lite` in order. Free-tier models are often overloaded or out of quota,
+and each one has its own quota, so the app switches to the next one instead of failing.
 
 ## API key security
 

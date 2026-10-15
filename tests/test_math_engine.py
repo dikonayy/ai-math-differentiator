@@ -207,3 +207,51 @@ def test_verify_story():
     assert verify_story(good, q, ["8"])  # solver and author disagree on which root answers it
     bad = SolverPayload(unknown="w", equation_lhs="x*(10 - 2*x)", equation_rhs="16", answer_roots=["2"])
     assert "NOT equivalent" in verify_story(bad, q, ["2"])[0]
+
+
+class _FakeModels:
+    def __init__(self, failures):
+        self.failures = failures  # model name -> HTTP code it fails with
+        self.calls = []
+
+    def generate_content(self, model, contents, config):
+        self.calls.append(model)
+        if model in self.failures:
+            error = RuntimeError(f"{self.failures[model]} error")
+            error.code = self.failures[model]
+            raise error
+        return f"answer from {model}"
+
+
+def _tutor_with(failures, models="a,b,c"):
+    from tutor import Tutor
+
+    t = Tutor("fake-key", models)
+    fake = _FakeModels(failures)
+    t.client = type("C", (), {"models": fake})()
+    return t, fake
+
+
+def test_tutor_falls_back_to_next_model_on_quota_or_overload():
+    t, fake = _tutor_with({"a": 429, "b": 503})
+    assert t._generate("hi", 0.5) == "answer from c"
+    assert fake.calls == ["a", "b", "c"]
+    # the model that worked is tried first next time
+    fake.calls.clear()
+    t._generate("hi", 0.5)
+    assert fake.calls == ["c"]
+
+
+def test_tutor_raises_last_error_when_all_models_fail():
+    t, fake = _tutor_with({"a": 429, "b": 404}, models="a,b")
+    with pytest.raises(RuntimeError) as e:
+        t._generate("hi", 0.5)
+    assert e.value.code == 404
+    assert fake.calls == ["a", "b"]
+
+
+def test_tutor_does_not_hide_real_errors():
+    t, fake = _tutor_with({"a": 400})
+    with pytest.raises(RuntimeError):
+        t._generate("hi", 0.5)
+    assert fake.calls == ["a"]  # a bad request is not retried on other models

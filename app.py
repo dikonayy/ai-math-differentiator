@@ -23,7 +23,8 @@ LEVEL_CAPTIONS = {
     "standard": "Grade-level, solve independently",
     "advanced": "Real-world modelling, multi-step",
 }
-DEFAULT_MODEL = "gemini-flash-latest"
+# Fallback chain: each model has its own free-tier quota
+DEFAULT_MODELS = "gemini-flash-latest,gemini-3.5-flash,gemini-flash-lite-latest,gemini-3.1-flash-lite"
 
 
 # ---------------------------------------------------------------------------
@@ -41,20 +42,20 @@ def get_setting(name: str, default: str = "") -> str:
 
 
 @st.cache_resource
-def get_tutor(api_key: str, model: str) -> Tutor:
-    return Tutor(api_key, model)
+def get_tutor(api_key: str, models: str) -> Tutor:
+    return Tutor(api_key, models)
 
 
 def friendly_error(e: Exception) -> str:
     code = getattr(e, "code", None)
     if code == 429:
-        return "The AI quota is used up for now (Gemini free tier limit). Please wait a minute and try again."
+        return "The AI quota is used up on all models for now (Gemini free tier limit). Please wait a minute and try again."
     if code in (401, 403):
         return "The Gemini API key was rejected. Check GEMINI_API_KEY in the app secrets."
     if code in (500, 503, 504):
         return "Gemini is overloaded right now (this happens on the free tier). Please try again in a minute."
     if code == 404:
-        return "The Gemini model was not found. Set GEMINI_MODEL in the app secrets to an available model."
+        return "No configured Gemini model is available. Set GEMINI_MODEL in the app secrets to available models."
     return f"The AI service returned an error: {e}"
 
 
@@ -64,7 +65,7 @@ state.setdefault("tasks", {})  # (a, b, c, level, language) -> GeneratedTask
 state.setdefault("progress", {})  # same key -> hints shown, attempts, chat, ...
 
 api_key = get_setting("GEMINI_API_KEY")
-model = get_setting("GEMINI_MODEL", DEFAULT_MODEL)
+models = get_setting("GEMINI_MODEL", DEFAULT_MODELS)
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ if not api_key:
     )
     st.stop()
 
-tutor = get_tutor(api_key, model)
+tutor = get_tutor(api_key, models)
 
 level = st.radio(
     "Choose your level",

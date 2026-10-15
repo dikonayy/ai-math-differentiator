@@ -89,12 +89,21 @@ def verify_story(solver: SolverPayload, q: Quadratic, final_roots: List[str]) ->
     return []
 
 
+FALLBACK_CODES = (404, 429, 500, 503, 504)  # retired model, quota or "high demand": try another model
+
+
 class Tutor:
-    def __init__(self, api_key: str, model: str):
-        # Gemini often answers 503 "high demand" for a moment: retry with backoff before giving up
-        retry = types.HttpRetryOptions(attempts=4, initial_delay=2, max_delay=20, http_status_codes=[429, 500, 503, 504])
+    def __init__(self, api_key: str, models: str):
+        """`models` is a comma-separated fallback list, e.g. "gemini-flash-latest,gemini-2.5-flash".
+
+        Free-tier Gemini models are often overloaded (503) or rate-limited (429), and each
+        model has its own quota, so on such errors we move on to the next model instead
+        of hammering the same one. Lighter models make more math slips, but every task
+        is verified by SymPy anyway.
+        """
+        retry = types.HttpRetryOptions(attempts=2, initial_delay=1, max_delay=4, http_status_codes=[500, 503, 504])
         self.client = genai.Client(api_key=api_key, http_options=types.HttpOptions(retry_options=retry))
-        self.model = model
+        self.models = [m.strip() for m in models.split(",") if m.strip()]
 
     def _generate(self, prompt: str, temperature: float, schema=None, system: Optional[str] = None):
         config = types.GenerateContentConfig(
@@ -104,7 +113,19 @@ class Tutor:
         if schema is not None:
             config.response_mime_type = "application/json"
             config.response_schema = schema
-        return self.client.models.generate_content(model=self.model, contents=prompt, config=config)
+        last_error: Optional[Exception] = None
+        for i, model in enumerate(self.models):
+            try:
+                response = self.client.models.generate_content(model=model, contents=prompt, config=config)
+            except Exception as e:
+                if getattr(e, "code", None) not in FALLBACK_CODES:
+                    raise
+                last_error = e
+                continue
+            if i:  # remember the model that worked so the next request starts with it
+                self.models.insert(0, self.models.pop(i))
+            return response
+        raise last_error
 
     def generate_task(
         self, q: Quadratic, level: str, shown_latex: Optional[str], language: str
