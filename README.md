@@ -6,7 +6,7 @@ difficulty levels** with adapted tasks, hints, feedback and solutions.
 
 > Course: Educational Technology & AI · Topic 8: AI for Differentiated Learning
 
-**Live demo:** `https://<your-app>.streamlit.app` *(replace after deploying)*
+**Live demo:** https://ai-math-differentiator.streamlit.app
 
 ## Features
 
